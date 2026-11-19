@@ -1,6 +1,12 @@
 import pytest
 
-from lerobot2mcap import converter
+# Importing the lerobot2mcap package loads tabular2mcap and lerobot at module
+# level. The lightweight CI test job installs neither, so skip there instead
+# of failing collection; the suite runs wherever the project is installed.
+pytest.importorskip("tabular2mcap")
+pytest.importorskip("lerobot")
+
+from lerobot2mcap import converter  # noqa: E402
 
 
 def test_resolves_automatic_worker_count_from_available_cpus(monkeypatch):
