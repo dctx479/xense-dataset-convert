@@ -22,6 +22,10 @@ from mcap2lerobot.xtac import (
     _tracker_confidence,
     write_xtac_metadata,
 )
+from mcap2lerobot.xtac_sidecar import (
+    expand_collection_devices,
+    expand_taccap_extrinsics,
+)
 
 HEAD = "observation.images.head_left"
 TACTILE = "observation.images.left_tactile_left"
@@ -246,14 +250,17 @@ def test_write_xtac_metadata_produces_the_provenance_files(tmp_path):
     assert hardware == {"robot_type": "xtac_umi_g1", "epochs": []}
 
     devices = json.loads((meta / "xumi_collection_devices.json").read_text())
+    assert devices["version"] == 2
     assert devices["total_episodes"] == 2
     assert devices["snapshot_episodes"] == 1 and devices["legacy_episodes"] == 1
     assert devices["episodes"][0]["legacy"] is False
     assert devices["episodes"][1]["legacy"] is True
     assert devices["episodes"][0]["source_episode_id"] == "EP-A"
+    assert expand_collection_devices(devices)[0]["devices"] == devices["devices"]["devices_0"]
 
     extrinsics = json.loads((meta / "taccap_extrinsics.json").read_text())
-    first = extrinsics["episodes"][0]
+    assert extrinsics["version"] == 4
+    first = expand_taccap_extrinsics(extrinsics)[0]
     assert first["poses_are_ee"] is True
     assert first["legacy_extrinsics"] is False
     assert first["tracker_to_ee"] == TRACKER_TO_EE
@@ -262,8 +269,7 @@ def test_write_xtac_metadata_produces_the_provenance_files(tmp_path):
 
     info = json.loads((meta / "info.json").read_text())
     tactile_info = info["features"][TACTILE]["info"]
-    assert tactile_info["taccap.rectify_kind"] == "tactile"
-    assert tactile_info["taccap.rectify_config"]["base_grid"] == [1, 2, 3, 4]
+    assert not [k for k in tactile_info if k.startswith("taccap.")]   # tactile recipe no longer written
     assert tactile_info["video.codec"] == "h264"  # left intact
 
 
@@ -272,7 +278,7 @@ def test_taccap_extrinsics_omits_transform_when_channel_metadata_absent(tmp_path
     meta.mkdir()
     (meta / "info.json").write_text(json.dumps({"features": {}}))
     write_xtac_metadata(tmp_path, [_episode_record("EP-A", extrinsic=False)], robot_type="xtac_umi_g1")
-    first = json.loads((meta / "taccap_extrinsics.json").read_text())["episodes"][0]
+    first = expand_taccap_extrinsics(json.loads((meta / "taccap_extrinsics.json").read_text()))[0]
     assert first["tracker_to_ee"] is None
     assert first["legacy_extrinsics"] is True
     assert first["poses_are_ee"] is False
