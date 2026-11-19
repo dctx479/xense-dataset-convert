@@ -1,12 +1,19 @@
 import json
 
 import pandas as pd
+import pytest
 
-from lerobot2mcap.dataset_info import DatasetInfo
 from mcap2lerobot.converter import _write_task_metadata
 
 
 def test_episode_manifest_carries_optional_task_identity_fields(tmp_path):
+    # Importing the lerobot2mcap package loads tabular2mcap and lerobot at module
+    # level. The lightweight CI test job installs neither, so skip there instead
+    # of failing collection of the whole module.
+    pytest.importorskip("tabular2mcap")
+    pytest.importorskip("lerobot")
+    from lerobot2mcap.dataset_info import DatasetInfo
+
     meta = tmp_path / "meta"
     meta.mkdir()
     (meta / "info.json").write_text(
