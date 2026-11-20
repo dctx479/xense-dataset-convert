@@ -39,8 +39,11 @@ topic 也不能表达任意 parquet 列、自定义文件和 LeRobot 原文件�
 
 - 新 XTac 导出对原视频解码得到的 RGB 使用 `libx264rgb`、`CRF=0`、`rgb24`
   编码，不进行 YUV420 色度降采样；读取后 RGB 像素保持一致。
-- XTac 写入 LeRobot 的普通训练投影也使用 RGB 无损编码。该路径要求
-  **LeRobot >=0.6.1,<0.7**，项目依赖下限同步更新。0.5.x fork 不再满足默认路径要求。
+- XTac 写入 LeRobot 的普通训练投影在 **LeRobot 0.6.x** 上也使用 RGB 无损编码。
+  项目依赖范围仍是 `>=0.5.1,<0.7`：0.5.x（含 `xense-taccap-lerobot` fork）的数据集写入器
+  只接受固定的 `vcodec` 列表并固定转成 `yuv420p`，没有 RGB 无损选项，
+  在这些版本上训练投影按源视频的编码格式写出（有损，与此前行为一致），转换时打印警告。
+  源载荷的保留和逐字节恢复不经过 LeRobot 的视频编码，在整个版本范围内都成立。
 - 原视频压缩字节并不等于新编码字节；原文件通过保留载荷原样恢复。
 - 导出额外数值特征到 `lerobot/features/<feature>` JSON topic，包括
   `observation.tracker_confidence`；在 `xense_lerobot` metadata 中声明名称、dtype、shape、
@@ -105,7 +108,8 @@ mcap2lerobot /datasets/legacy-cdr -o /datasets/legacy-restored \
 
 已经导出的旧 CDR MCAP 不会因为更新程序而自动补回 confidence 或校准数据；
 需要从原 LeRobot 重新导出 XTac。`--video-crf`、`--video-preset` 与 converter YAML
-只影响旧 CDR 路径，新 XTac 路径固定采用 RGB 无损视频策略。
+只影响旧 CDR 路径，新 XTac 导出固定采用 RGB 无损视频策略；
+XTac → LeRobot 训练投影在 LeRobot 0.5.x 上的例外见上文“视频与特征”。
 
 ## 验证入口
 

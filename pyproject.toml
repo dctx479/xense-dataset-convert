@@ -17,9 +17,21 @@ requires-python = ">=3.12"
 
 # The union of what the four converters need.
 #
-# lerobot >=0.6.1 supplies RGBEncoderConfig, required for lossless RGB XTac
-# video writing. Keep the <0.7 cap until its writer API has been tested.
-# The [dataset] extra supplies datasets, pyarrow, pandas and torchcodec.
+# lerobot: `lerobot[dataset]>=0.5.1,<0.7`. Every release in that range reads and
+# writes the same on-disk format (CODEBASE_VERSION "v3.0"); the cap tracks the
+# Python API the three lerobot-backed converters call -- LeRobotDataset for
+# reading, LeRobotDataset.create / add_frame / save_episode / finalize for
+# writing -- which 0.6 already reorganised once. 0.5.1 and 0.6.1 are both
+# exercised end to end (README, "Which lerobot"); bump the cap after testing a
+# new minor. The [dataset] extra is required from 0.6 on, where datasets,
+# pyarrow, pandas and torchcodec left lerobot's core dependencies; 0.5.x ignores
+# it. `>=0.5.1` still accepts the xense-taccap-lerobot fork (0.5.1+xtac.0.0.6):
+# PEP 440 sorts a local version above the plain release.
+#
+# RGB lossless video in the XTac -> LeRobot projection needs RGBEncoderConfig,
+# which only 0.6.x has. On 0.5.x that projection is written with the source
+# codec instead (mcap2lerobot.converter.video_writer_kwargs); everything else,
+# source preservation and exact restoration included, works on the whole range.
 #
 # av and numpy stay on the ranges lerobot itself declares rather than tightening
 # past them: `av==15.1.0` would block lerobot from moving anywhere inside 15.x.
@@ -35,7 +47,7 @@ requires-python = ">=3.12"
 # The `ffmpeg` binary is a system requirement (lerobot2mcap shells out to it);
 # see README for the conda recipe.
 dependencies = [
-  "lerobot[dataset]>=0.6.1,<0.7",
+  "lerobot[dataset]>=0.5.1,<0.7",
   "tabular2mcap[protobuf]==0.1.12",
   "tqdm>=4.60",
   "av>=15.0.0,<16.0.0",
