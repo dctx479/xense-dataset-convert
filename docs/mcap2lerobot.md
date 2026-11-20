@@ -49,7 +49,8 @@ Raw recordings may provide only a `task_id`; pass `--task` for a real instructio
 New LeRobot exports include task texts and typed extra-feature declarations in
 `xense_lerobot` metadata, along with checksummed source-file attachments.
 Default return conversion restores those original files exactly. Without source
-preservation, the reader builds a training projection and writes RGB lossless video.
+preservation, the reader builds a training projection and writes RGB lossless video
+(on lerobot 0.6.x; 0.5.x has no such encoder setting and keeps the source codec).
 
 ## `lerobot_roundtrip` dialect
 

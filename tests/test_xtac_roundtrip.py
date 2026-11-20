@@ -1,6 +1,9 @@
 """Real XTac/protobuf/video and source-integrity regression tests."""
 
 import json
+import logging
+import sys
+import types
 from fractions import Fraction
 from pathlib import Path
 from types import SimpleNamespace
@@ -10,7 +13,9 @@ import pandas as pd
 import pytest
 
 from mcap2lerobot.config import ConverterConfig
-from mcap2lerobot.converter import McapToLeRobotConverter, build_features, plan_pairing
+from mcap2lerobot.converter import (
+    McapToLeRobotConverter, build_features, lossless_video_supported, plan_pairing, video_writer_kwargs,
+)
 from mcap2lerobot.xtac import XTacMcapReader
 from xense_dataset_convert._lossless import (
     MANIFEST_ATTACHMENT, digest, inventory, preserve_mcap, restore_lerobot,
@@ -244,6 +249,58 @@ def test_camera_failure_cancels_export_without_publishing(dataset, tmp_path):
     assert not (tmp_path / "broken").exists()
 
 
+class _VcodecDataset:
+    """``LeRobotDataset.create`` as lerobot 0.5.x (and the xense-taccap-lerobot fork) declares it."""
+
+    @classmethod
+    def create(cls, repo_id=None, vcodec="libsvtav1", encoder_threads=None): ...
+
+
+class _RgbEncoderDataset:
+    """``LeRobotDataset.create`` as lerobot 0.6.x declares it."""
+
+    @classmethod
+    def create(cls, repo_id=None, rgb_encoder=None, encoder_threads=None): ...
+
+
+def test_lossless_projection_falls_back_to_source_codec_without_rgb_encoder(caplog):
+    assert not lossless_video_supported(_VcodecDataset)
+    with caplog.at_level(logging.WARNING, logger="mcap2lerobot.converter"):
+        assert video_writer_kwargs(_VcodecDataset, "h264", lossless_video=True) == {"vcodec": "h264"}
+    assert "not RGB lossless" in caplog.text
+
+
+def test_lossless_projection_uses_the_rgb_encoder_setting_when_present(monkeypatch, caplog):
+    # mcap2lerobot.lossless_video imports lerobot at module level; a stand-in
+    # keeps this check runnable where lerobot is not installed.
+    module = types.ModuleType("mcap2lerobot.lossless_video")
+    module.rgb_encoder = lambda: "lossless-rgb"
+    monkeypatch.setitem(sys.modules, "mcap2lerobot.lossless_video", module)
+    assert lossless_video_supported(_RgbEncoderDataset)
+    with caplog.at_level(logging.WARNING, logger="mcap2lerobot.converter"):
+        assert video_writer_kwargs(_RgbEncoderDataset, "h264", lossless_video=True) == {"rgb_encoder": "lossless-rgb"}
+    assert not caplog.records
+
+
+def test_video_writer_keeps_the_source_codec_when_lossless_is_not_requested():
+    assert video_writer_kwargs(_VcodecDataset, "hevc", lossless_video=False) == {"vcodec": "hevc"}
+    assert video_writer_kwargs(_VcodecDataset, None, lossless_video=False) == {}
+
+
+def _assert_projected_video(frames: list[np.ndarray], expected: np.ndarray) -> None:
+    """Exact RGB where lerobot can write lossless video (0.6.x); frame count and size on 0.5.x.
+
+    lerobot 0.5.x has no RGB lossless encoder setting, so its projection is
+    re-encoded with the source codec and cannot be compared pixel for pixel.
+    """
+    from lerobot.datasets.lerobot_dataset import LeRobotDataset
+
+    decoded = np.stack(frames)
+    assert decoded.shape == expected.shape
+    if lossless_video_supported(LeRobotDataset):
+        assert np.array_equal(decoded, expected)
+
+
 def test_rgb_writer_preserves_pixels_without_source_restore(dataset, tmp_path):
     pytest.importorskip("lerobot")
     import av
@@ -271,7 +328,7 @@ def test_rgb_writer_preserves_pixels_without_source_restore(dataset, tmp_path):
         for video in sorted(converted.glob(f"videos/{key}/**/*.mp4")):
             with av.open(str(video)) as container:
                 frames.extend(frame.to_ndarray(format="rgb24") for frame in container.decode(video=0))
-        assert np.array_equal(np.stack(frames), dataset.images)
+        _assert_projected_video(frames, dataset.images)
     frame = pd.concat([pd.read_parquet(path) for path in sorted(converted.glob("data/**/*.parquet"))])
     assert np.array_equal(np.stack(frame[EXTRA]), np.stack(dataset.table[EXTRA]))
     assert np.array_equal(np.stack(frame["observation.counter"]).reshape(-1, 1),
@@ -378,7 +435,7 @@ def test_default_mcap_lerobot_mcap_preserves_unknown_channels(dataset, tmp_path)
     for path in sorted(converted.output_path.glob(f"videos/{CAMERA}/**/*.mp4")):
         with av.open(str(path)) as container:
             images.extend(frame.to_ndarray(format="rgb24") for frame in container.decode(video=0))
-    np.testing.assert_array_equal(np.stack(images), dataset.images)
+    _assert_projected_video(images, dataset.images)
     restored = convert(Format.LEROBOT, Format.MCAP, inputs=converted.output_path, output=tmp_path / "raw-return")
     original = sorted((tmp_path / "raw").glob("*.mcap"))
     returned = sorted(restored.output_path.glob("*.mcap"))

@@ -5,7 +5,7 @@ from __future__ import annotations
 try:
     from lerobot.configs.video import RGBEncoderConfig
 except ImportError as error:
-    raise ImportError("Lossless XTac video writing requires lerobot>=0.6.1") from error
+    raise ImportError("Lossless XTac video writing requires lerobot 0.6.x (RGBEncoderConfig)") from error
 
 
 class LosslessRGBEncoder(RGBEncoderConfig):

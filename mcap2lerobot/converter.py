@@ -318,6 +318,38 @@ def encoder_kwargs(dataset_cls: Any, video_codec: str | None) -> dict[str, Any]:
     return {}
 
 
+def lossless_video_supported(dataset_cls: Any) -> bool:
+    """Whether this lerobot can be told to write RGB lossless video.
+
+    That needs ``LeRobotDataset.create(rgb_encoder=...)``, which lerobot 0.6.x
+    has. 0.5.x -- the xense-taccap-lerobot fork included -- takes only
+    ``vcodec=`` from a fixed list without ``libx264rgb`` and always converts to
+    ``yuv420p``, so it has no lossless RGB setting to select.
+    """
+    return "rgb_encoder" in inspect.signature(dataset_cls.create).parameters
+
+
+def video_writer_kwargs(dataset_cls: Any, video_codec: str | None, lossless_video: bool) -> dict[str, Any]:
+    """Encoder settings for ``LeRobotDataset.create``: RGB lossless where lerobot can.
+
+    A lerobot without the setting keeps writing with the source codec, as it
+    did before lossless video existed, and says so. The preserved source files
+    are copied byte for byte and do not depend on this choice.
+    """
+    if not lossless_video:
+        return encoder_kwargs(dataset_cls, video_codec)
+    if lossless_video_supported(dataset_cls):
+        from .lossless_video import rgb_encoder
+
+        return {"rgb_encoder": rgb_encoder()}
+    logger.warning(
+        "This lerobot has no rgb_encoder setting (lerobot 0.5.x): the LeRobot videos are "
+        "re-encoded with the source codec and are not RGB lossless. Preserved source files "
+        "are unaffected; use lerobot 0.6.x for a lossless training projection"
+    )
+    return encoder_kwargs(dataset_cls, video_codec)
+
+
 class McapToLeRobotConverter:
     """Convert one MCAP file per episode into one LeRobot v3 dataset."""
 
@@ -357,14 +389,9 @@ class McapToLeRobotConverter:
         # saved. Hand it a copy so `_write_episode`'s layout check keeps comparing
         # against the layout we built, not against lerobot's annotated one.
         kwargs["features"] = copy.deepcopy(kwargs["features"])
-        if lossless_video and kwargs.get("use_videos"):
-            from .lossless_video import rgb_encoder
-
-            if "rgb_encoder" not in inspect.signature(LeRobotDataset.create).parameters:
-                raise RuntimeError("Lossless XTac video writing requires lerobot>=0.6.1")
-            kwargs["rgb_encoder"] = rgb_encoder()
-        else:
-            kwargs.update(encoder_kwargs(LeRobotDataset, video_codec))
+        kwargs.update(
+            video_writer_kwargs(LeRobotDataset, video_codec, lossless_video and bool(kwargs.get("use_videos")))
+        )
         return LeRobotDataset.create(**kwargs)
 
     def convert(self) -> Path:
